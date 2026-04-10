@@ -1,35 +1,35 @@
 @echo off
-title A股策略选股系统 v1.0.0
+title A-Stock Screener v1.0.1
 echo ============================================
-echo   A股策略选股系统 v1.0.0
+echo   A-Stock Screener v1.0.1
 echo ============================================
 echo.
 
-REM 检查 Python
+REM Check Python
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [错误] 未找到 Python，请先安装 Python 3.8+
-    echo 下载地址: https://www.python.org/downloads/
-    echo 安装时勾选 "Add Python to PATH"
+    echo [ERROR] Python not found. Please install Python 3.8+
+    echo Download: https://www.python.org/downloads/
+    echo Check "Add Python to PATH" during install
     pause
     exit /b 1
 )
 
-for /f "tokens=*" %%i in ('python --version') do echo [OK] Python: %%i
+for /f "tokens=*" %%i in ('python --version') do echo [OK] %%i
 
-REM 安装依赖
+REM Install deps
 echo.
-echo [1/2] 正在安装依赖...
+echo [1/2] Installing dependencies...
 python -m pip install -q baostock pandas numpy tabulate pyyaml 1>nul 2>&1
 if errorlevel 1 (
-    echo [警告] pip 安装失败，请尝试管理员权限运行
-    echo 或手动执行: pip install baostock pandas numpy tabulate pyyaml
+    echo [WARN] pip failed. Try run as Administrator.
+    echo Or manually: pip install baostock pandas numpy tabulate pyyaml
 )
-echo [OK] 依赖安装完成
+echo [OK] Dependencies ready
 
-REM 运行
+REM Run
 echo.
-echo [2/2] 启动选股系统...
+echo [2/2] Starting screener...
 echo ============================================
 echo.
 
@@ -38,5 +38,5 @@ python main.py %*
 
 echo.
 echo ============================================
-echo 执行完毕，按任意键关闭窗口
+echo Done. Press any key to exit.
 pause >nul
