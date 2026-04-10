@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A股策略选股系统</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f1117;--card:#1a1d2e;--border:#2a2d3e;--text:#e1e4ed;--text2:#8b8fa3;--accent:#6366f1;--accent2:#818cf8;--green:#10b981;--red:#ef4444;--yellow:#f59e0b;--hover:#252840}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+.header{background:var(--card);border-bottom:1px solid var(--border);padding:16px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.header h1{font-size:20px;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header .meta{color:var(--text2);font-size:13px}
+.layout{display:flex;min-height:calc(100vh - 57px)}
+.sidebar{width:260px;background:var(--card);border-right:1px solid var(--border);padding:20px;overflow-y:auto;flex-shrink:0}
+.main{flex:1;padding:20px;overflow-x:auto}
+.section-title{font-size:13px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px}
+select{width:100%;padding:8px 12px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;font-size:14px;cursor:pointer;outline:none}
+select:focus{border-color:var(--accent)}
+.strat-list{display:flex;flex-direction:column;gap:8px;margin-bottom:20px}
+.strat-item{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg);border-radius:6px;cursor:pointer;border:1px solid transparent;transition:all .2s}
+.strat-item:hover{border-color:var(--border)}
+.strat-item.active{border-color:var(--accent);background:rgba(99,102,241,.1)}
+.strat-item input{display:none}
+.strat-item .check{width:18px;height:18px;border:2px solid var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center;transition:all .2s;flex-shrink:0}
+.strat-item.active .check{background:var(--accent);border-color:var(--accent)}
+.strat-item.active .check::after{content:'✓';color:#fff;font-size:12px}
+.strat-item .name{font-size:14px}
+.btn{width:100%;padding:10px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;transition:all .2s;margin-top:12px}
+.btn:hover{background:var(--accent2);transform:translateY(-1px)}
+.btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}
+.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center}
+.stat-card .val{font-size:28px;font-weight:700;color:var(--accent)}
+.stat-card .label{font-size:12px;color:var(--text2);margin-top:4px}
+.table-wrap{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+table{width:100%;border-collapse:collapse}
+th{background:var(--bg);padding:12px 16px;text-align:left;font-size:13px;font-weight:600;color:var(--text2);border-bottom:1px solid var(--border);white-space:nowrap;position:sticky;top:0}
+td{padding:12px 16px;border-bottom:1px solid var(--border);font-size:14px;white-space:nowrap}
+tr:hover{background:var(--hover);cursor:pointer}
+tr:last-child td{border-bottom:none}
+.tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:500;margin:2px}
+.tag-green{background:rgba(16,185,129,.15);color:var(--green)}
+.tag-blue{background:rgba(99,102,241,.15);color:var(--accent2)}
+.tag-yellow{background:rgba(245,158,11,.15);color:var(--yellow)}
+.score-bar{display:flex;align-items:center;gap:8px}
+.score-bar .bar{flex:1;height:6px;background:var(--bg);border-radius:3px;overflow:hidden}
+.score-bar .fill{height:100%;border-radius:3px;transition:width .5s}
+.pct-up{color:var(--green)}
+.pct-down{color:var(--red)}
+.empty{text-align:center;padding:60px 20px;color:var(--text2)}
+.empty .icon{font-size:48px;margin-bottom:12px}
+.loading{display:none;text-align:center;padding:40px}
+.loading.show{display:block}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Modal */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:14px;width:90%;max-width:900px;max-height:90vh;overflow-y:auto;padding:24px}
+.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.modal-header h2{font-size:18px}
+.modal-close{background:none;border:none;color:var(--text2);font-size:24px;cursor:pointer;padding:4px 8px;border-radius:4px}
+.modal-close:hover{background:var(--bg);color:var(--text)}
+.chart-tabs{display:flex;gap:4px;margin-bottom:16px}
+.chart-tab{padding:6px 14px;border-radius:6px;font-size:13px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text2);transition:all .2s}
+.chart-tab.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.chart-container{position:relative;height:400px}
+.chart-container canvas{width:100%!important}
+@media(max-width:768px){.sidebar{width:200px}.stats{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.layout{flex-direction:column}.sidebar{width:100%;border-right:none;border-bottom:1px solid var(--border)}}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>📊 A股策略选股系统 v1.0.2</h1>
+  <div class="meta" id="metaInfo">就绪</div>
+</div>
+<div class="layout">
+  <div class="sidebar">
+    <div style="margin-bottom:20px">
+      <div class="section-title">Stock Pool</div>
+      <select id="poolSelect">
+        <option value="all">全市场</option>
+        <option value="hs300">沪深300</option>
+        <option value="zz500">中证500</option>
+      </select>
+    </div>
+    <div style="margin-bottom:20px">
+      <div class="section-title">Combination Mode</div>
+      <select id="comboSelect">
+        <option value="any">并集 (任一策略命中)</option>
+        <option value="composite">交集 (全部策略命中)</option>
+        <option value="single">单策略</option>
+      </select>
+    </div>
+    <div>
+      <div class="section-title">Enabled Strategies</div>
+      <div class="strat-list" id="stratList"></div>
+    </div>
+    <button class="btn" id="scanBtn" onclick="startScan()">🚀 Start Scan</button>
+    <button class="btn btn-outline" style="margin-top:8px" onclick="loadResults()">📋 Load Last Results</button>
+  </div>
+  <div class="main">
+    <div class="stats" id="statsArea" style="display:none">
+      <div class="stat-card"><div class="val" id="statCount">0</div><div class="label">Matched</div></div>
+      <div class="stat-card"><div class="val" id="statStrats">0</div><div class="label">Strategies</div></div>
+      <div class="stat-card"><div class="val" id="statTime">-</div><div class="label">Last Scan</div></div>
+    </div>
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <div>Scanning stocks... This may take a few minutes.</div>
+    </div>
+    <div id="tableArea">
+      <div class="empty">
+        <div class="icon">📈</div>
+        <div>Configure strategies and click "Start Scan"</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- K-line Modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">K-Line Chart</h2>
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+    </div>
+    <div class="chart-tabs">
+      <button class="chart-tab active" onclick="switchChart('price',this)">Price + MA</button>
+      <button class="chart-tab" onclick="switchChart('macd',this)">MACD</button>
+      <button class="chart-tab" onclick="switchChart('rsi',this)">RSI</button>
+    </div>
+    <div class="chart-container"><canvas id="mainChart"></canvas></div>
+  </div>
+</div>
+
+<script>
+const STRAT_NAMES = {
+  ma_cross:'MA Cross (Golden/Death Cross)', macd:'MACD (Trend Signal)',
+  rsi:'RSI (Overbought/Oversold)', bollinger:'Bollinger Bands',
+  volume:'Volume Surge', trend:'Trend Alignment'
+};
+let chart = null, currentKlines = [], currentChartType = 'price';
+
+async function init() {
+  const cfg = await (await fetch('/api/config')).json();
+  const list = document.getElementById('stratList');
+  list.innerHTML = '';
+  for (const [name, info] of Object.entries(cfg.strategies)) {
+    const div = document.createElement('div');
+    div.className = 'strat-item' + (info.enabled ? ' active' : '');
+    div.dataset.name = name;
+    div.innerHTML = `<div class="check"></div><div class="name">${STRAT_NAMES[name]||name}</div>`;
+    div.onclick = () => div.classList.toggle('active');
+    list.appendChild(div);
+  }
+  if (cfg.pool) document.getElementById('poolSelect').value = cfg.pool;
+  if (cfg.combination) document.getElementById('comboSelect').value = cfg.combination;
+  loadResults();
+}
+
+function getSelectedStrategies() {
+  return [...document.querySelectorAll('.strat-item.active')].map(el => el.dataset.name);
+}
+
+async function startScan() {
+  const btn = document.getElementById('scanBtn');
+  btn.disabled = true; btn.textContent = '⏳ Scanning...';
+  document.getElementById('loading').classList.add('show');
+  document.getElementById('tableArea').innerHTML = '';
+  try {
+    const res = await fetch('/api/scan', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        pool: document.getElementById('poolSelect').value,
+        combination: document.getElementById('comboSelect').value,
+        strategies: getSelectedStrategies(),
+      })
+    });
+    const data = await res.json();
+    if (data.success) renderResults(data);
+    else alert('Scan failed: ' + (data.error||'Unknown error'));
+  } catch(e) { alert('Request failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = '🚀 Start Scan';
+  document.getElementById('loading').classList.remove('show');
+}
+
+async function loadResults() {
+  const res = await (await fetch('/api/results')).json();
+  if (res.results && res.results.length) renderResults({results:res.results, timestamp:res.timestamp, count:res.results.length});
+}
+
+function renderResults(data) {
+  const {results, timestamp, count} = data;
+  document.getElementById('statsArea').style.display = 'grid';
+  document.getElementById('statCount').textContent = results.length;
+  const strats = new Set();
+  results.forEach(r => r.signals.forEach(s => strats.add(s.strategy)));
+  document.getElementById('statStrats').textContent = strats.size;
+  document.getElementById('statTime').textContent = timestamp || '-';
+  document.getElementById('metaInfo').textContent = `Last scan: ${timestamp||'-'} | ${results.length} matched`;
+
+  if (!results.length) {
+    document.getElementById('tableArea').innerHTML = '<div class="empty"><div class="icon">🔍</div><div>No stocks matched the criteria</div></div>';
+    return;
+  }
+  const maxScore = Math.max(...results.map(r => r.score), 1);
+  let html = '<div class="table-wrap"><table><thead><tr><th>#</th><th>Code</th><th>Name</th><th>Price</th><th>Change%</th><th>Signals</th><th>Score</th></tr></thead><tbody>';
+  results.forEach((r, i) => {
+    const pctClass = r.pct_chg >= 0 ? 'pct-up' : 'pct-down';
+    const pctSign = r.pct_chg >= 0 ? '+' : '';
+    const tags = r.signals.map(s => {
+      const color = s.strength >= 4 ? 'tag-green' : s.strength >= 3 ? 'tag-blue' : 'tag-yellow';
+      return `<span class="tag ${color}">${s.strategy}</span>`;
+    }).join('');
+    const barColor = r.score >= 12 ? 'var(--green)' : r.score >= 8 ? 'var(--accent)' : 'var(--yellow)';
+    const barWidth = Math.round(r.score / maxScore * 100);
+    html += `<tr onclick="openStock('${r.code}','${r.name}')">
+      <td>${i+1}</td><td><b>${r.code}</b></td><td>${r.name}</td>
+      <td>${r.close}</td><td class="${pctClass}">${pctSign}${r.pct_chg}%</td>
+      <td>${tags}</td>
+      <td class="score-bar"><span>${r.score}</span><div class="bar"><div class="fill" style="width:${barWidth}%;background:${barColor}"></div></div></td>
+    </tr>`;
+  });
+  html += '</tbody></table></div>';
+  document.getElementById('tableArea').innerHTML = html;
+}
+
+async function openStock(code, name) {
+  document.getElementById('modalTitle').textContent = `${code} ${name} - K-Line`;
+  document.getElementById('modalOverlay').classList.add('show');
+  const res = await (await fetch(`/api/stock/${code}`)).json();
+  if (res.error) { alert(res.error); return; }
+  currentKlines = res.klines;
+  switchChart('price', document.querySelector('.chart-tab'));
+}
+
+function closeModal() { document.getElementById('modalOverlay').classList.remove('show'); }
+
+function switchChart(type, btn) {
+  document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentChartType = type;
+  renderChart(type);
+}
+
+function renderChart(type) {
+  const kl = currentKlines;
+  if (!kl.length) return;
+  if (chart) chart.destroy();
+  const ctx = document.getElementById('mainChart').getContext('2d');
+  const labels = kl.map(k => k.date.slice(5));
+
+  if (type === 'price') {
+    chart = new Chart(ctx, {type:'line', data:{
+      labels,
+      datasets:[
+        {label:'Close', data:kl.map(k=>k.close), borderColor:'#e1e4ed', borderWidth:1.5, pointRadius:0, tension:0.1},
+        {label:'MA5', data:kl.map(k=>k.ma5), borderColor:'#f59e0b', borderWidth:1, pointRadius:0, borderDash:[4,2]},
+        {label:'MA10', data:kl.map(k=>k.ma10), borderColor:'#6366f1', borderWidth:1, pointRadius:0, borderDash:[4,2]},
+        {label:'MA20', data:kl.map(k=>k.ma20), borderColor:'#10b981', borderWidth:1, pointRadius:0, borderDash:[4,2]},
+        {label:'MA60', data:kl.map(k=>k.ma60), borderColor:'#ef4444', borderWidth:1, pointRadius:0, borderDash:[4,2]},
+      ]}, options:{responsive:true,maintainAspectRatio:false,interaction:{intersect:false,mode:'index'},
+      plugins:{legend:{labels:{color:'#8b8fa3',font:{size:11}}}},scales:{x:{ticks:{color:'#8b8fa3',maxTicksLimit:12}},y:{ticks:{color:'#8b8fa3'}}}}
+    });
+  } else if (type === 'macd') {
+    chart = new Chart(ctx, {type:'bar', data:{
+      labels,
+      datasets:[
+        {label:'DIF', data:kl.map(k=>k.macd_dif), type:'line', borderColor:'#f59e0b', borderWidth:1.5, pointRadius:0, tension:0.1, yAxisID:'y'},
+        {label:'DEA', data:kl.map(k=>k.macd_dea), type:'line', borderColor:'#6366f1', borderWidth:1.5, pointRadius:0, tension:0.1, yAxisID:'y'},
+        {label:'Histogram', data:kl.map(k=>k.macd_hist), backgroundColor:kl.map(k=>(k.macd_hist||0)>=0?'rgba(16,185,129,.6)':'rgba(239,68,68,.6)'), borderWidth:0, yAxisID:'y'},
+      ]}, options:{responsive:true,maintainAspectRatio:false,interaction:{intersect:false,mode:'index'},
+      plugins:{legend:{labels:{color:'#8b8fa3',font:{size:11}}}},scales:{x:{ticks:{color:'#8b8fa3',maxTicksLimit:12}},y:{ticks:{color:'#8b8fa3'}}}}
+    });
+  } else if (type === 'rsi') {
+    chart = new Chart(ctx, {type:'line', data:{
+      labels,
+      datasets:[
+        {label:'RSI(14)', data:kl.map(k=>k.rsi), borderColor:'#818cf8', borderWidth:1.5, pointRadius:0, tension:0.1, fill:false},
+        {label:'Overbought (70)', data:kl.map(()=>70), borderColor:'rgba(239,68,68,.4)', borderWidth:1, borderDash:[5,5], pointRadius:0},
+        {label:'Oversold (30)', data:kl.map(()=>30), borderColor:'rgba(16,185,129,.4)', borderWidth:1, borderDash:[5,5], pointRadius:0},
+      ]}, options:{responsive:true,maintainAspectRatio:false,interaction:{intersect:false,mode:'index'},
+      plugins:{legend:{labels:{color:'#8b8fa3',font:{size:11}}}},scales:{x:{ticks:{color:'#8b8fa3',maxTicksLimit:12}},y:{min:0,max:100,ticks:{color:'#8b8fa3'}}}}
+    });
+  }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+init();
+</script>
+</body>
+</html>
