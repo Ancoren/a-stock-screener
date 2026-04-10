@@ -101,21 +101,21 @@ tr:last-child td{border-bottom:none}
 </head>
 <body>
 <div class="header">
-  <h1>📊 A股策略选股系统 v1.0.2</h1>
+  <h1>📊 A股策略选股系统 v1.0.5</h1>
   <div class="meta" id="metaInfo">就绪</div>
 </div>
 <div class="layout">
   <div class="sidebar">
     <div style="margin-bottom:20px">
-      <div class="section-title">Stock Pool</div>
+      <div class="section-title">股票池</div>
       <select id="poolSelect">
-        <option value="all">全市场</option>
-        <option value="hs300">沪深300</option>
-        <option value="zz500">中证500</option>
+        <option value="all">全市场 (5000+)</option>
+        <option value="hs300">沪深300 (300只)</option>
+        <option value="zz500">中证500 (500只)</option>
       </select>
     </div>
     <div style="margin-bottom:20px">
-      <div class="section-title">Combination Mode</div>
+      <div class="section-title">组合模式</div>
       <select id="comboSelect">
         <option value="any">并集 (任一策略命中)</option>
         <option value="composite">交集 (全部策略命中)</option>
@@ -123,7 +123,7 @@ tr:last-child td{border-bottom:none}
       </select>
     </div>
     <div>
-      <div class="section-title">Enabled Strategies</div>
+      <div class="section-title">启用策略</div>
       <div class="strat-list" id="stratList"></div>
     </div>
     <button class="btn" id="scanBtn" onclick="startScan()">🚀 Start Scan</button>
@@ -131,18 +131,18 @@ tr:last-child td{border-bottom:none}
   </div>
   <div class="main">
     <div class="stats" id="statsArea" style="display:none">
-      <div class="stat-card"><div class="val" id="statCount">0</div><div class="label">Matched</div></div>
-      <div class="stat-card"><div class="val" id="statStrats">0</div><div class="label">Strategies</div></div>
-      <div class="stat-card"><div class="val" id="statTime">-</div><div class="label">Last Scan</div></div>
+      <div class="stat-card"><div class="val" id="statCount">0</div><div class="label">符合条件</div></div>
+      <div class="stat-card"><div class="val" id="statStrats">0</div><div class="label">命中策略</div></div>
+      <div class="stat-card"><div class="val" id="statTime">-</div><div class="label">最近扫描</div></div>
     </div>
     <div class="loading" id="loading">
       <div class="spinner"></div>
-      <div>Scanning stocks... This may take a few minutes.</div>
+      <div>正在扫描股票...首次扫描较慢，有缓存后秒出。</div>
     </div>
     <div id="tableArea">
       <div class="empty">
         <div class="icon">📈</div>
-        <div>Configure strategies and click "Start Scan"</div>
+        <div>配置策略后点击"开始扫描"</div>
       </div>
     </div>
   </div>
@@ -152,11 +152,11 @@ tr:last-child td{border-bottom:none}
 <div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
   <div class="modal">
     <div class="modal-header">
-      <h2 id="modalTitle">K-Line Chart</h2>
+      <h2 id="modalTitle">K线图</h2>
       <button class="modal-close" onclick="closeModal()">&times;</button>
     </div>
     <div class="chart-tabs">
-      <button class="chart-tab active" onclick="switchChart('price',this)">Price + MA</button>
+      <button class="chart-tab active" onclick="switchChart('price',this)">价格 + 均线</button>
       <button class="chart-tab" onclick="switchChart('macd',this)">MACD</button>
       <button class="chart-tab" onclick="switchChart('rsi',this)">RSI</button>
     </div>
@@ -166,9 +166,12 @@ tr:last-child td{border-bottom:none}
 
 <script>
 const STRAT_NAMES = {
-  ma_cross:'MA Cross (Golden/Death Cross)', macd:'MACD (Trend Signal)',
-  rsi:'RSI (Overbought/Oversold)', bollinger:'Bollinger Bands',
-  volume:'Volume Surge', trend:'Trend Alignment'
+  ma_cross:'均线金叉', macd:'MACD信号',
+  rsi:'RSI超买超卖', bollinger:'布林带',
+  volume:'放量异动', trend:'多头排列',
+  shrink_pullback:'缩量回踩', one_yang_three_yin:'一阳三阴',
+  bottom_volume:'底部放量', box_oscillation:'箱体震荡',
+  volume_breakout:'放量突破'
 };
 let chart = null, currentKlines = [], currentChartType = 'price';
 
@@ -195,7 +198,7 @@ function getSelectedStrategies() {
 
 async function startScan() {
   const btn = document.getElementById('scanBtn');
-  btn.disabled = true; btn.textContent = '⏳ Scanning...';
+  btn.disabled = true; btn.textContent = '⏳ 扫描中...';
   document.getElementById('loading').classList.add('show');
   document.getElementById('tableArea').innerHTML = '';
   try {
@@ -211,7 +214,7 @@ async function startScan() {
     if (data.success) renderResults(data);
     else alert('Scan failed: ' + (data.error||'Unknown error'));
   } catch(e) { alert('Request failed: ' + e.message); }
-  btn.disabled = false; btn.textContent = '🚀 Start Scan';
+  btn.disabled = false; btn.textContent = '🚀 开始扫描';
   document.getElementById('loading').classList.remove('show');
 }
 
@@ -231,11 +234,11 @@ function renderResults(data) {
   document.getElementById('metaInfo').textContent = `Last scan: ${timestamp||'-'} | ${results.length} matched`;
 
   if (!results.length) {
-    document.getElementById('tableArea').innerHTML = '<div class="empty"><div class="icon">🔍</div><div>No stocks matched the criteria</div></div>';
+    document.getElementById('tableArea').innerHTML = '<div class="empty"><div class="icon">🔍</div><div>未找到符合条件的股票</div></div>';
     return;
   }
   const maxScore = Math.max(...results.map(r => r.score), 1);
-  let html = '<div class="table-wrap"><table><thead><tr><th>#</th><th>Code</th><th>Name</th><th>Price</th><th>Change%</th><th>Signals</th><th>Score</th></tr></thead><tbody>';
+  let html = '<div class="table-wrap"><table><thead><tr><th>#</th><th>代码</th><th>名称</th><th>现价</th><th>涨跌%</th><th>信号</th><th>买入价</th><th>止损</th><th>目标价</th><th>风险</th><th>评分</th></tr></thead><tbody>';
   results.forEach((r, i) => {
     const pctClass = r.pct_chg >= 0 ? 'pct-up' : 'pct-down';
     const pctSign = r.pct_chg >= 0 ? '+' : '';
@@ -245,10 +248,17 @@ function renderResults(data) {
     }).join('');
     const barColor = r.score >= 12 ? 'var(--green)' : r.score >= 8 ? 'var(--accent)' : 'var(--yellow)';
     const barWidth = Math.round(r.score / maxScore * 100);
+    const riskColors = {low:'var(--green)',medium:'var(--yellow)',high:'var(--red)'};
+    const riskLabels = {low:'低',medium:'中',high:'高'};
+    const buyP = r.buy_price ? r.buy_price.toFixed(2) : '-';
+    const slP = r.stop_loss ? r.stop_loss.toFixed(2) : '-';
+    const tpP = r.target_price ? r.target_price.toFixed(2) : '-';
+    const riskTag = r.risk_level ? `<span style="color:${riskColors[r.risk_level]||'var(--text2)'}">${riskLabels[r.risk_level]||r.risk_level}</span>` : '-';
     html += `<tr onclick="openStock('${r.code}','${r.name}')">
       <td>${i+1}</td><td><b>${r.code}</b></td><td>${r.name}</td>
       <td>${r.close}</td><td class="${pctClass}">${pctSign}${r.pct_chg}%</td>
       <td>${tags}</td>
+      <td>${buyP}</td><td>${slP}</td><td>${tpP}</td><td>${riskTag}</td>
       <td class="score-bar"><span>${r.score}</span><div class="bar"><div class="fill" style="width:${barWidth}%;background:${barColor}"></div></div></td>
     </tr>`;
   });

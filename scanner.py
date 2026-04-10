@@ -13,6 +13,11 @@ from strategies.rsi import RSIStrategy
 from strategies.bollinger import BollingerStrategy
 from strategies.volume import VolumeSurgeStrategy
 from strategies.trend import TrendStrategy
+from strategies.shrink_pullback import ShrinkPullbackStrategy
+from strategies.one_yang_three_yin import OneYangThreeYinStrategy
+from strategies.bottom_volume import BottomVolumeStrategy
+from strategies.box_oscillation import BoxOscillationStrategy
+from strategies.volume_breakout import VolumeBreakoutStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +28,11 @@ STRATEGY_MAP = {
     "bollinger": BollingerStrategy,
     "volume": VolumeSurgeStrategy,
     "trend": TrendStrategy,
+    "shrink_pullback": ShrinkPullbackStrategy,
+    "one_yang_three_yin": OneYangThreeYinStrategy,
+    "bottom_volume": BottomVolumeStrategy,
+    "box_oscillation": BoxOscillationStrategy,
+    "volume_breakout": VolumeBreakoutStrategy,
 }
 
 
@@ -144,6 +154,14 @@ class StockScanner:
 
             latest = df.iloc[-1]
             score = sum(s.get("strength", 3) for s in signals)
+
+            # 合并交易计划 (取最高分策略的买卖点)
+            best_signal = max(signals, key=lambda s: s.get("strength", 0))
+            trading_plan = {}
+            for field in ["buy_price", "stop_loss", "target_price", "risk_level", "reason"]:
+                if field in best_signal:
+                    trading_plan[field] = best_signal[field]
+
             results.append({
                 "code": code,
                 "name": name_map.get(code, ""),
@@ -151,6 +169,7 @@ class StockScanner:
                 "pct_chg": round(float(latest.get("pct_chg", 0)), 2),
                 "signals": signals,
                 "score": score,
+                **trading_plan,
             })
 
         # 4. 排序 & 截断

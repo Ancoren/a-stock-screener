@@ -7,20 +7,17 @@ import numpy as np
 
 
 def calc_ma(df: pd.DataFrame, periods: list[int]) -> pd.DataFrame:
-    """计算移动平均线"""
     for p in periods:
         df[f"MA{p}"] = df["close"].rolling(window=p).mean()
     return df
 
 
 def calc_ema(series: pd.Series, period: int) -> pd.Series:
-    """指数移动平均"""
     return series.ewm(span=period, adjust=False).mean()
 
 
 def calc_macd(df: pd.DataFrame, fast: int = 12, slow: int = 26,
               signal: int = 9) -> pd.DataFrame:
-    """MACD 指标"""
     ema_fast = calc_ema(df["close"], fast)
     ema_slow = calc_ema(df["close"], slow)
     df["MACD_DIF"] = ema_fast - ema_slow
@@ -30,7 +27,6 @@ def calc_macd(df: pd.DataFrame, fast: int = 12, slow: int = 26,
 
 
 def calc_rsi(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
-    """RSI 相对强弱指标"""
     delta = df["close"].diff()
     gain = delta.where(delta > 0, 0.0)
     loss = (-delta).where(delta < 0, 0.0)
@@ -43,7 +39,6 @@ def calc_rsi(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
 
 def calc_bollinger(df: pd.DataFrame, period: int = 20,
                    std_dev: int = 2) -> pd.DataFrame:
-    """布林带"""
     ma = df["close"].rolling(window=period).mean()
     std = df["close"].rolling(window=period).std()
     df["BOLL_MID"] = ma
@@ -53,13 +48,11 @@ def calc_bollinger(df: pd.DataFrame, period: int = 20,
 
 
 def calc_volume_ma(df: pd.DataFrame, period: int = 20) -> pd.DataFrame:
-    """成交量均线"""
     df["VOL_MA"] = df["volume"].rolling(window=period).mean()
     return df
 
 
 def calc_kdj(df: pd.DataFrame, n: int = 9, m1: int = 3, m2: int = 3) -> pd.DataFrame:
-    """KDJ 随机指标"""
     low_n = df["low"].rolling(window=n).min()
     high_n = df["high"].rolling(window=n).max()
     rsv = (df["close"] - low_n) / (high_n - low_n).replace(0, np.nan) * 100
@@ -69,10 +62,47 @@ def calc_kdj(df: pd.DataFrame, n: int = 9, m1: int = 3, m2: int = 3) -> pd.DataF
     return df
 
 
+def calc_atr(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
+    """ATR 真实波幅"""
+    high_low = df["high"] - df["low"]
+    high_close = (df["high"] - df["close"].shift()).abs()
+    low_close = (df["low"] - df["close"].shift()).abs()
+    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+    df["ATR"] = tr.rolling(window=period).mean()
+    return df
+
+
+def calc_deviation_rate(df: pd.DataFrame, period: int = 5) -> pd.DataFrame:
+    """乖离率 = (收盘价 - MA) / MA * 100"""
+    ma_col = f"MA{period}"
+    if ma_col in df.columns:
+        df[f"BIAS{period}"] = (df["close"] - df[ma_col]) / df[ma_col] * 100
+    return df
+
+
+def calc_support_resistance(df: pd.DataFrame, window: int = 20) -> pd.DataFrame:
+    """计算支撑位和阻力位 (最近N天的高低点)"""
+    df["RESISTANCE"] = df["high"].rolling(window=window).max()
+    df["SUPPORT"] = df["low"].rolling(window=window).min()
+    # 近期高点 (排除最新一天)
+    df["RESISTANCE_RECENT"] = df["high"].shift(1).rolling(window=window).max()
+    df["SUPPORT_RECENT"] = df["low"].shift(1).rolling(window=window).min()
+    return df
+
+
+def check_bullish_alignment(df: pd.DataFrame) -> bool:
+    """检查多头排列 MA5 > MA10 > MA20 > MA60"""
+    latest = df.iloc[-1]
+    cols = ["MA5", "MA10", "MA20", "MA60"]
+    for c in cols:
+        if c not in df.columns or pd.isna(latest[c]):
+            return False
+    return latest["MA5"] > latest["MA10"] > latest["MA20"] > latest["MA60"]
+
+
 def add_all_indicators(df: pd.DataFrame, ma_periods: list[int] = None,
                         macd_params: dict = None, rsi_period: int = 14,
                         boll_params: dict = None, vol_period: int = 20) -> pd.DataFrame:
-    """一次性添加所有常用指标"""
     if ma_periods is None:
         ma_periods = [5, 10, 20, 60]
     if macd_params is None:
@@ -86,4 +116,9 @@ def add_all_indicators(df: pd.DataFrame, ma_periods: list[int] = None,
     df = calc_bollinger(df, **boll_params)
     df = calc_volume_ma(df, vol_period)
     df = calc_kdj(df)
+    df = calc_atr(df)
+    df = calc_support_resistance(df)
+    # 乖离率
+    for p in ma_periods:
+        df = calc_deviation_rate(df, p)
     return df
