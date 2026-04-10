@@ -5,7 +5,7 @@ a = Analysis(
     ['web.py'],
     pathex=[],
     binaries=[],
-    datas=[('config.yaml', '.'), ('templates', 'templates')],
+    datas=[('config.yaml', '.')],
     hiddenimports=['scanner', 'web', 'strategies.ma_cross', 'strategies.macd', 'strategies.rsi', 'strategies.bollinger', 'strategies.volume', 'strategies.trend', 'data.fetcher', 'utils.indicators', 'utils.report'],
     hookspath=[],
     hooksconfig={},

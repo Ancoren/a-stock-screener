@@ -438,6 +438,13 @@ def api_stock_detail(code):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/cache/clear", methods=["POST"])
+def api_cache_clear():
+    from data.fetcher import clear_cache
+    clear_cache()
+    return jsonify({"success": True, "message": "Cache cleared"})
+
+
 if __name__ == "__main__":
     args = parse_args()
     logger.info(f"Web UI: http://{args.host}:{args.port}")
