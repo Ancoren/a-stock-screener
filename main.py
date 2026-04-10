@@ -14,13 +14,14 @@ import argparse
 import logging
 import sys
 import os
-import yaml
-
-from scanner import StockScanner, load_config
-from utils.report import format_table, format_json, format_summary, save_results
 
 # 确保能找到同目录下的模块和配置
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import yaml
+from scanner import StockScanner, load_config
+from utils.report import format_table, format_json, format_summary, save_results
 
 logging.basicConfig(
     level=logging.INFO,

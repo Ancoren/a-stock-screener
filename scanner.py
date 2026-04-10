@@ -1,11 +1,9 @@
 """
-选股扫描引擎
+A股策略选股 - 扫描器核心
 """
-import os
-import pandas as pd
 import yaml
 import logging
-from pathlib import Path
+import pandas as pd
 
 from data.fetcher import get_stock_list, fetch_all_stocks_history
 from utils.indicators import add_all_indicators
@@ -29,117 +27,136 @@ STRATEGY_MAP = {
 
 
 def load_config(path: str = "config.yaml") -> dict:
-    # 如果是相对路径，尝试相对于脚本所在目录
+    """加载配置文件"""
+    import os
     if not os.path.isabs(path):
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        alt_path = os.path.join(script_dir, path)
-        if os.path.exists(alt_path):
-            path = alt_path
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), path)
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
 class StockScanner:
-    """股票扫描器"""
+    """选股扫描器"""
 
     def __init__(self, config_path: str = "config.yaml"):
         self.config = load_config(config_path)
-        self.strategies = self._init_strategies()
+        self.strategies = self._build_strategies()
 
-    def _init_strategies(self) -> list:
-        """初始化启用的策略"""
-        strategies = []
-        strat_cfg = self.config.get("strategies", {})
-
-        for name, cls in STRATEGY_MAP.items():
-            if strat_cfg.get(name, {}).get("enabled", False):
-                strategies.append(cls(strat_cfg[name]))
+    def _build_strategies(self) -> list:
+        """根据配置创建策略实例"""
+        instances = []
+        for name, params in self.config.get("strategies", {}).items():
+            if not params.get("enabled", False):
+                continue
+            cls = STRATEGY_MAP.get(name)
+            if cls:
+                instances.append(cls(params))
                 logger.info(f"启用策略: {name}")
-
-        logger.info(f"共 {len(strategies)} 个策略启用")
-        return strategies
+            else:
+                logger.warning(f"未知策略: {name}")
+        return instances
 
     def scan(self) -> list[dict]:
-        """执行扫描"""
-        scan_cfg = self.config["scan"]
-        data_cfg = self.config["data"]
+        """执行全量扫描"""
+        scan_cfg = self.config.get("scan", {})
+        data_cfg = self.config.get("data", {})
+        output_cfg = self.config.get("output", {})
+        combo = self.config.get("combination", "any")
 
         # 1. 获取股票列表
-        logger.info("获取股票列表...")
         stock_list = get_stock_list(
-            pool=scan_cfg["pool"],
-            exclude_st=scan_cfg["exclude_st"],
-            exclude_kcb=scan_cfg["exclude_kcb"],
-            exclude_bse=scan_cfg["exclude_bse"],
+            pool=scan_cfg.get("pool", "all"),
+            exclude_st=scan_cfg.get("exclude_st", True),
+            exclude_kcb=scan_cfg.get("exclude_kcb", False),
+            exclude_bse=scan_cfg.get("exclude_bse", True),
             custom_codes=scan_cfg.get("custom_codes"),
         )
-
-        if stock_list.empty:
-            logger.warning("股票列表为空")
-            return []
-
         codes = stock_list["代码"].tolist()
-        # 建立 code -> name 映射
         name_map = dict(zip(stock_list["代码"], stock_list["名称"]))
 
-        # 2. 批量获取历史数据
-        logger.info(f"获取 {len(codes)} 只股票历史数据...")
-        history = fetch_all_stocks_history(codes, days=data_cfg["history_days"])
-
-        # 3. 计算指标 + 策略扫描
-        logger.info("开始策略扫描...")
-        results = []
-        combination = self.config.get("combination", "single")
-
-        for code, df in history.items():
-            if len(df) < 60:  # 数据不足跳过
-                continue
-
-            df = add_all_indicators(df)
-            signals = self._run_strategies(df, combination)
-
-            if signals:
-                latest = df.iloc[-1]
-                results.append({
-                    "code": code,
-                    "name": name_map.get(code, ""),
-                    "close": round(latest["close"], 2),
-                    "pct_chg": round(latest.get("pct_chg", 0), 2),
-                    "volume": latest["volume"],
-                    "signals": signals,
-                    "score": sum(s["strength"] for s in signals),
-                })
-
-        # 按评分排序
-        results.sort(key=lambda x: x["score"], reverse=True)
-
-        # 截断
-        max_results = self.config["output"].get("max_results", 50)
-        results = results[:max_results]
-
-        logger.info(f"扫描完成, 共 {len(results)} 只股票符合策略条件")
-        return results
-
-    def _run_strategies(self, df: pd.DataFrame, combination: str) -> list[dict]:
-        """对单只股票运行所有策略"""
-        signals = []
-        for strategy in self.strategies:
-            try:
-                result = strategy.check(df)
-                if result:
-                    result["strategy"] = strategy.name
-                    signals.append(result)
-            except Exception as e:
-                logger.warning(f"策略 {strategy.name} 执行异常: {e}")
-
-        if not signals:
+        if not codes:
+            logger.warning("股票池为空")
             return []
 
-        if combination == "single":
-            # 取最强信号
-            return [max(signals, key=lambda s: s["strength"])]
-        elif combination == "composite":
-            # 需要至少2个策略命中
-            return signals if len(signals) >= 2 else []
-        else:  # any
-            return signals
+        # 2. 批量获取历史数据
+        history_days = data_cfg.get("history_days", 120)
+        all_data = fetch_all_stocks_history(codes, days=history_days)
+
+        # 3. 逐只扫描
+        results = []
+        for code, df in all_data.items():
+            if df.empty or len(df) < 30:
+                continue
+
+            # 添加技术指标
+            ma_periods = [5, 10, 20, 60]
+            macd_params = {}
+            rsi_period = 14
+            boll_params = {}
+            vol_period = 20
+
+            strat_cfg = self.config.get("strategies", {})
+            if "ma_cross" in strat_cfg:
+                ma_periods = list(set(ma_periods + [
+                    strat_cfg["ma_cross"].get("short_period", 5),
+                    strat_cfg["ma_cross"].get("long_period", 20),
+                ]))
+            if "macd" in strat_cfg:
+                macd_params = {
+                    "fast": strat_cfg["macd"].get("fast", 12),
+                    "slow": strat_cfg["macd"].get("slow", 26),
+                    "signal": strat_cfg["macd"].get("signal", 9),
+                }
+            if "rsi" in strat_cfg:
+                rsi_period = strat_cfg["rsi"].get("period", 14)
+            if "bollinger" in strat_cfg:
+                boll_params = {
+                    "period": strat_cfg["bollinger"].get("period", 20),
+                    "std_dev": strat_cfg["bollinger"].get("std_dev", 2),
+                }
+            if "volume" in strat_cfg:
+                vol_period = strat_cfg["volume"].get("period", 20)
+
+            df = add_all_indicators(
+                df, ma_periods=ma_periods, macd_params=macd_params,
+                rsi_period=rsi_period, boll_params=boll_params,
+                vol_period=vol_period,
+            )
+
+            # 运行策略
+            signals = []
+            for strategy in self.strategies:
+                try:
+                    sig = strategy.check(df)
+                    if sig:
+                        signals.append({
+                            "strategy": strategy.name,
+                            **sig,
+                        })
+                except Exception as e:
+                    logger.warning(f"{code} 策略 {strategy.name} 异常: {e}")
+
+            # 组合判定
+            if combo == "composite" and len(signals) < len(self.strategies):
+                continue
+            if not signals:
+                continue
+
+            latest = df.iloc[-1]
+            score = sum(s.get("strength", 3) for s in signals)
+            results.append({
+                "code": code,
+                "name": name_map.get(code, ""),
+                "close": round(float(latest["close"]), 2),
+                "pct_chg": round(float(latest.get("pct_chg", 0)), 2),
+                "signals": signals,
+                "score": score,
+            })
+
+        # 4. 排序 & 截断
+        results.sort(key=lambda x: x["score"], reverse=True)
+        max_results = output_cfg.get("max_results", 50)
+        results = results[:max_results]
+
+        logger.info(f"扫描完成: {len(results)} 只符合条件")
+        return results
