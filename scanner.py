@@ -1,6 +1,7 @@
 """
 选股扫描引擎
 """
+import os
 import pandas as pd
 import yaml
 import logging
@@ -28,6 +29,12 @@ STRATEGY_MAP = {
 
 
 def load_config(path: str = "config.yaml") -> dict:
+    # 如果是相对路径，尝试相对于脚本所在目录
+    if not os.path.isabs(path):
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        alt_path = os.path.join(script_dir, path)
+        if os.path.exists(alt_path):
+            path = alt_path
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
